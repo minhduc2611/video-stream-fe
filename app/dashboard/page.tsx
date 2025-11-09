@@ -170,6 +170,7 @@ export default function DashboardPage() {
                   title={selectedVideo.title}
                   subtitles={selectedVideo.subtitles}
                   className="w-full h-full max-h-[70vh]"
+                  videoId={selectedVideo.id}
                 />
               ) : (
                 <div className="w-full h-full max-h-[70vh] flex items-center justify-center bg-black rounded-lg">

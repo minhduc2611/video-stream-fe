@@ -1,5 +1,5 @@
 // API service layer for backend integration
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8090/api/v1';
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8090/api/v1';
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -74,6 +74,133 @@ export interface HlsStreamingResponse {
   status: string;
   title: string;
   duration?: number;
+}
+
+export interface PlaybackMetricPayload {
+  benchmark_run_source?: string;
+  benchmark_metadata?: Record<string, unknown>;
+  video_id?: string;
+  bandwidth_mbps?: number;
+  country?: string;
+  isp?: string;
+  device_type?: string;
+  first_frame_ms?: number;
+  total_startup_ms?: number;
+  buffering_events?: number;
+}
+
+export interface MetricsInsights {
+  video_processing: {
+    totals: ProcessingAggregate;
+    step_breakdown: ProcessingStepStat[];
+    recent_runs: ProcessingRunSummary[];
+  };
+  api_latency: {
+    totals: ApiLatencyTotals;
+    by_route: ApiRouteLatency[];
+  };
+  playback: {
+    totals: PlaybackTotals;
+    by_country: PlaybackGeoSummary[];
+    by_device: PlaybackDeviceSummary[];
+  };
+  server_startup: {
+    totals: ServerStartupTotals;
+    recent_samples: ServerStartupSample[];
+  };
+}
+
+export interface ProcessingAggregate {
+  run_count: number;
+  avg_total_duration_ms: number | null;
+  fastest_run_ms: number | null;
+  slowest_run_ms: number | null;
+}
+
+export interface ProcessingStepStat {
+  step: string;
+  sample_count: number;
+  avg_duration_ms: number | null;
+  avg_cpu: number | null;
+  peak_mem_bytes: number | null;
+}
+
+export interface ProcessingRunSummary {
+  id: string;
+  started_at: string;
+  source: string;
+  runner_host: string;
+  cpu_model: string | null;
+  bandwidth_mbps: number | null;
+  total_duration_ms: number;
+  step_count: number;
+  avg_cpu: number | null;
+  peak_mem_bytes: number | null;
+}
+
+export interface ApiLatencyTotals {
+  sample_count: number;
+  avg_latency_ms: number | null;
+  p95_latency_ms: number | null;
+  p99_latency_ms: number | null;
+}
+
+export interface ApiRouteLatency {
+  route: string;
+  method: string;
+  sample_count: number;
+  avg_latency_ms: number | null;
+  p95_latency_ms: number | null;
+  p99_latency_ms: number | null;
+  avg_concurrent: number | null;
+  top_statuses: ApiStatusBreakdown[];
+}
+
+export interface ApiStatusBreakdown {
+  status: string;
+  sample_count: number;
+}
+
+export interface PlaybackTotals {
+  sample_count: number;
+  avg_first_frame_ms: number | null;
+  avg_total_startup_ms: number | null;
+  avg_buffering_events: number | null;
+}
+
+export interface PlaybackGeoSummary {
+  country: string;
+  sample_count: number;
+  avg_first_frame_ms: number | null;
+  avg_total_startup_ms: number | null;
+  avg_buffering_events: number | null;
+}
+
+export interface PlaybackDeviceSummary {
+  device_type: string;
+  sample_count: number;
+  avg_first_frame_ms: number | null;
+  avg_total_startup_ms: number | null;
+  avg_buffering_events: number | null;
+}
+
+export interface ServerStartupTotals {
+  sample_count: number;
+  avg_startup_ms: number | null;
+  min_startup_ms: number | null;
+  max_startup_ms: number | null;
+  cold_start_avg_ms: number | null;
+  warm_start_avg_ms: number | null;
+  cold_start_count: number;
+  warm_start_count: number;
+}
+
+export interface ServerStartupSample {
+  recorded_at: string;
+  service_name: string;
+  revision: string | null;
+  cold_start: boolean;
+  startup_duration_ms: number;
 }
 
 class ApiService {
@@ -250,6 +377,19 @@ class ApiService {
     return this.request<string>(`/videos/${videoId}`, {
       method: 'DELETE',
     });
+  }
+
+  async recordPlaybackMetric(
+    payload: PlaybackMetricPayload
+  ): Promise<ApiResponse<string>> {
+    return this.request<string>('/metrics/playback', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async getMetricsInsights(): Promise<ApiResponse<MetricsInsights>> {
+    return this.request<MetricsInsights>('/metrics/insights');
   }
 
   // Helper method to get thumbnail URL

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
@@ -18,6 +18,155 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import Hls from "hls.js"
+import { apiService, API_BASE_URL, type PlaybackMetricPayload } from "@/lib/api"
+
+type PlaybackMetricState = {
+  sessionId: string
+  mountTime?: number
+  manifestRequestedAt?: number
+  manifestLoadedAt?: number
+  playbackRequestedAt?: number
+  firstFrameAt?: number
+  bufferingEvents: number
+  deliverySource?: string
+  bandwidthEstimateMbps?: number
+  transferSize?: number
+  encodedBodySize?: number
+  nextHopProtocol?: string
+  metricsSent: boolean
+}
+
+const createSessionId = () => {
+  if (typeof globalThis !== "undefined") {
+    const maybeCrypto = (globalThis as typeof globalThis & { crypto?: Crypto }).crypto
+    if (maybeCrypto && typeof maybeCrypto.randomUUID === "function") {
+      return maybeCrypto.randomUUID()
+    }
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+const now = () =>
+  typeof performance !== "undefined" && typeof performance.now === "function"
+    ? performance.now()
+    : Date.now()
+
+const getDeviceType = (userAgent: string | undefined): string | undefined => {
+  if (!userAgent) return undefined
+  const ua = userAgent.toLowerCase()
+  if (ua.includes("mobile") || ua.includes("android") || ua.includes("iphone") || ua.includes("ipad")) {
+    return "mobile"
+  }
+  if (ua.includes("smart-tv") || ua.includes("appletv") || ua.includes("hbbtv")) {
+    return "tv"
+  }
+  return "desktop"
+}
+
+const classifyDeliverySource = (entry?: PerformanceResourceTiming): string | undefined => {
+  if (!entry) return undefined
+  if (entry.transferSize === 0 && entry.decodedBodySize > 0) {
+    return "disk_cache"
+  }
+  if (entry.transferSize > 0 && entry.encodedBodySize > 0) {
+    const ratio = entry.transferSize / entry.encodedBodySize
+    if (ratio < 1.05) {
+      return "edge_cache"
+    }
+    return "origin"
+  }
+  return undefined
+}
+
+const extractHeaders = (networkDetails: any): Record<string, string> | undefined => {
+  if (!networkDetails) return undefined
+
+  if (typeof networkDetails.getAllResponseHeaders === "function") {
+    const raw = networkDetails.getAllResponseHeaders()
+    if (!raw) return undefined
+    const lines = raw.trim().split(/[\r\n]+/)
+    return lines.reduce((acc: Record<string, string>, line: string) => {
+      const parts = line.split(":")
+      if (parts.length >= 2) {
+        const key = parts.shift()?.trim().toLowerCase()
+        if (key) {
+          acc[key] = parts.join(":").trim()
+        }
+      }
+      return acc
+    }, {} as Record<string, string>)
+  }
+
+  if (networkDetails.headers) {
+    const headersObj: Record<string, string> = {}
+    if (typeof networkDetails.headers.forEach === "function") {
+      networkDetails.headers.forEach((value: string, key: string) => {
+        headersObj[key.toLowerCase()] = value
+      })
+      return headersObj
+    }
+
+    if (typeof networkDetails.headers === "object") {
+      for (const [key, value] of Object.entries(networkDetails.headers)) {
+        if (typeof value === "string") {
+          headersObj[key.toLowerCase()] = value
+        }
+      }
+      return headersObj
+    }
+  }
+
+  return undefined
+}
+
+const extractDeliverySource = (networkDetails: any): string | undefined => {
+  const headers = extractHeaders(networkDetails)
+  if (!headers) return undefined
+
+  const cacheHeader =
+    headers["cf-cache-status"] ||
+    headers["x-cache"] ||
+    headers["x-cache-status"] ||
+    headers["x-served-by"] ||
+    headers["age"]
+
+  if (!cacheHeader) return undefined
+
+  const value = cacheHeader.toString().toLowerCase()
+  if (value.includes("hit")) return "edge_cache"
+  if (value.includes("stale")) return "edge_cache"
+  if (value.includes("miss")) return "origin"
+  if (value.includes("bypass")) return "origin"
+  if (value.includes("dynamic")) return "origin"
+
+  if (headers["age"]) {
+    const age = Number.parseInt(headers["age"], 10)
+    if (!Number.isNaN(age) && age > 0) {
+      return "edge_cache"
+    }
+  }
+
+  return undefined
+}
+
+const captureResourceTiming = (url: string | null, state: PlaybackMetricState) => {
+  if (!url || typeof performance === "undefined" || typeof performance.getEntriesByType !== "function") {
+    return
+  }
+
+  const normalized = url.split("?")[0]
+  const entries = performance.getEntriesByType("resource") as PerformanceResourceTiming[]
+  const match = entries
+    .filter((entry) => entry.name.startsWith(normalized) || normalized.startsWith(entry.name))
+    .sort((a, b) => b.responseEnd - a.responseEnd)[0]
+
+  if (match) {
+    state.transferSize = match.transferSize
+    state.encodedBodySize = match.encodedBodySize
+    state.nextHopProtocol = match.nextHopProtocol
+    state.deliverySource = state.deliverySource ?? classifyDeliverySource(match)
+  }
+}
 
 interface VideoPlayerProps {
   src: string
@@ -28,12 +177,19 @@ interface VideoPlayerProps {
     language: string
   }>
   className?: string
+  videoId?: string
 }
 
-export default function VideoPlayer({ src, title, subtitles = [], className }: VideoPlayerProps) {
+export default function VideoPlayer({ src, title, subtitles = [], className, videoId }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const hlsRef = useRef<Hls | null>(null)
+  const playbackMetricsRef = useRef<PlaybackMetricState>({
+    sessionId: createSessionId(),
+    mountTime: now(),
+    bufferingEvents: 0,
+    metricsSent: false,
+  })
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -48,6 +204,114 @@ export default function VideoPlayer({ src, title, subtitles = [], className }: V
   const [error, setError] = useState("")
   const [availableQualities, setAvailableQualities] = useState<string[]>([])
   const [bufferedPercentage, setBufferedPercentage] = useState(0)
+
+  const constructPayload = useCallback(
+    (reason: string): PlaybackMetricPayload | undefined => {
+      const state = playbackMetricsRef.current
+      if (!state.firstFrameAt) return undefined
+
+      const firstFrameMs =
+        state.mountTime !== undefined ? Math.round(state.firstFrameAt - state.mountTime) : undefined
+      const startupMs =
+        state.playbackRequestedAt !== undefined
+          ? Math.round(state.firstFrameAt - state.playbackRequestedAt)
+          : firstFrameMs
+
+      if (typeof navigator === "undefined") return undefined
+
+      const connection = (navigator as unknown as { connection?: any }).connection
+
+      return {
+        benchmark_run_source: "playback_client",
+        benchmark_metadata: {
+          session_id: state.sessionId,
+          reason,
+          manifest_latency_ms:
+            state.manifestLoadedAt !== undefined && state.manifestRequestedAt !== undefined
+              ? Math.round(state.manifestLoadedAt - state.manifestRequestedAt)
+              : undefined,
+          transfer_size_bytes: state.transferSize,
+          encoded_body_size_bytes: state.encodedBodySize,
+          next_hop_protocol: state.nextHopProtocol,
+          connection_type: connection?.effectiveType,
+          delivery_source: state.deliverySource,
+          user_agent: navigator.userAgent,
+          language: navigator.language,
+          downlink: connection?.downlink,
+          rtt: connection?.rtt,
+        },
+        video_id: videoId,
+        device_type: getDeviceType(navigator.userAgent),
+        bandwidth_mbps: state.bandwidthEstimateMbps ?? connection?.downlink ?? undefined,
+        first_frame_ms: firstFrameMs,
+        total_startup_ms: startupMs,
+        buffering_events: state.bufferingEvents,
+      }
+    },
+    [videoId],
+  )
+
+  const sendPlaybackMetrics = useCallback(
+    async (reason: string, preferBeacon = false) => {
+      const state = playbackMetricsRef.current
+      if (state.metricsSent) return
+
+      const payload = constructPayload(reason)
+      if (!payload) return
+
+      state.metricsSent = true
+
+      console.log("sendBeacon", preferBeacon)
+      if (preferBeacon && typeof navigator !== "undefined" && typeof (navigator as any).sendBeacon === "function") {
+        console.log("sendBeacon inside")
+        const blob = new Blob([JSON.stringify(payload)], { type: "application/json" })
+        ;(navigator as any).sendBeacon(`${API_BASE_URL}/metrics/playback`, blob)
+        return
+      }
+
+      void apiService.recordPlaybackMetric(payload)
+    },
+    [constructPayload],
+  )
+
+  useEffect(() => {
+    const state = playbackMetricsRef.current
+    console.log("source_change", state.firstFrameAt, state.metricsSent)
+    if (state.firstFrameAt && !state.metricsSent) {
+      void sendPlaybackMetrics("source_change")
+    }
+    console.log("source_change after", state.firstFrameAt, state.metricsSent)
+    playbackMetricsRef.current = {
+      sessionId: createSessionId(),
+      mountTime: now(),
+      bufferingEvents: 0,
+      metricsSent: false,
+    }
+  }, [sendPlaybackMetrics, src, videoId])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const handleBeforeUnload = () => {
+      console.log("beforeunload")
+      if (playbackMetricsRef.current.metricsSent) return
+      if (!playbackMetricsRef.current.firstFrameAt) return
+      void sendPlaybackMetrics("beforeunload", true)
+    }
+
+    window.addEventListener("beforeunload", handleBeforeUnload)
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload)
+    }
+  }, [sendPlaybackMetrics])
+
+  useEffect(() => {
+    return () => {
+      if (!playbackMetricsRef.current.metricsSent && playbackMetricsRef.current.firstFrameAt) {
+        void sendPlaybackMetrics("unmount", true)
+      }
+    }
+  }, [sendPlaybackMetrics])
 
   // Auto-hide controls
   useEffect(() => {
@@ -81,6 +345,8 @@ export default function VideoPlayer({ src, title, subtitles = [], className }: V
       setDuration(video.duration)
       setIsLoading(false)
       updateBufferedState()
+      playbackMetricsRef.current.manifestLoadedAt = playbackMetricsRef.current.manifestLoadedAt ?? now()
+      captureResourceTiming(video.currentSrc, playbackMetricsRef.current)
     }
 
     const handleTimeUpdate = () => {
@@ -91,21 +357,43 @@ export default function VideoPlayer({ src, title, subtitles = [], className }: V
     const handlePlay = () => {
       setIsPlaying(true)
       setIsBuffering(false)
+      playbackMetricsRef.current.playbackRequestedAt =
+        playbackMetricsRef.current.playbackRequestedAt ?? now()
     }
     const handlePause = () => setIsPlaying(false)
     const handleWaiting = () => {
       if (!video.paused && video.readyState < 3) {
         setIsBuffering(true)
+        playbackMetricsRef.current.bufferingEvents += 1
       }
     }
     const handleStalled = () => {
       if (!video.paused) {
         setIsBuffering(true)
+        playbackMetricsRef.current.bufferingEvents += 1
       }
     }
-    const handlePlaying = () => setIsBuffering(false)
-    const handleCanPlay = () => setIsBuffering(false)
+    const handlePlaying = () => {
+      setIsBuffering(false)
+      playbackMetricsRef.current.firstFrameAt = playbackMetricsRef.current.firstFrameAt ?? now()
+    }
+    const handleCanPlay = () => {
+      setIsBuffering(false)
+      captureResourceTiming(video.currentSrc, playbackMetricsRef.current)
+    }
     const handleProgress = () => updateBufferedState()
+    const handleEnded = () => {
+      setIsPlaying(false)
+      void sendPlaybackMetrics("ended")
+    }
+    const handleError = () => {
+      setError("Playback error")
+      void sendPlaybackMetrics("error")
+    }
+    const handleLoadStart = () => {
+      playbackMetricsRef.current.manifestRequestedAt =
+        playbackMetricsRef.current.manifestRequestedAt ?? now()
+    }
 
     video.addEventListener("loadedmetadata", handleLoadedMetadata)
     video.addEventListener("timeupdate", handleTimeUpdate)
@@ -116,6 +404,9 @@ export default function VideoPlayer({ src, title, subtitles = [], className }: V
     video.addEventListener("stalled", handleStalled)
     video.addEventListener("playing", handlePlaying)
     video.addEventListener("canplay", handleCanPlay)
+    video.addEventListener("ended", handleEnded)
+    video.addEventListener("error", handleError)
+    video.addEventListener("loadstart", handleLoadStart)
 
     return () => {
       video.removeEventListener("loadedmetadata", handleLoadedMetadata)
@@ -127,8 +418,11 @@ export default function VideoPlayer({ src, title, subtitles = [], className }: V
       video.removeEventListener("stalled", handleStalled)
       video.removeEventListener("playing", handlePlaying)
       video.removeEventListener("canplay", handleCanPlay)
+      video.removeEventListener("ended", handleEnded)
+      video.removeEventListener("error", handleError)
+      video.removeEventListener("loadstart", handleLoadStart)
     }
-  }, [])
+  }, [sendPlaybackMetrics])
 
   // HLS support with hls.js
   useEffect(() => {
@@ -155,6 +449,19 @@ export default function VideoPlayer({ src, title, subtitles = [], className }: V
         })
         
         hlsRef.current = hls
+
+        hls.on(Hls.Events.MANIFEST_LOADING, () => {
+          playbackMetricsRef.current.manifestRequestedAt = now()
+        })
+
+        hls.on(Hls.Events.MANIFEST_LOADED, (_, data: any) => {
+          playbackMetricsRef.current.manifestLoadedAt = now()
+          const delivery = extractDeliverySource(data?.networkDetails)
+          if (delivery) {
+            playbackMetricsRef.current.deliverySource = delivery
+          }
+          captureResourceTiming(src, playbackMetricsRef.current)
+        })
         
         hls.on(Hls.Events.MEDIA_ATTACHED, () => {
           console.log("HLS media attached")
@@ -186,6 +493,21 @@ export default function VideoPlayer({ src, title, subtitles = [], className }: V
           const currentLevel = hls.levels[data.level]
           if (currentLevel) {
             console.log(`Now playing at ${currentLevel.height}p`)
+          }
+        })
+
+        hls.on(Hls.Events.FRAG_LOADED, (_event: any, data: any) => {
+          const stats = data?.stats
+          if (stats?.bwEstimate && stats.bwEstimate > 0) {
+            playbackMetricsRef.current.bandwidthEstimateMbps = Number(
+              (stats.bwEstimate / 1_000_000).toFixed(2),
+            )
+          }
+          if (!playbackMetricsRef.current.deliverySource) {
+            const delivery = extractDeliverySource(data?.networkDetails)
+            if (delivery) {
+              playbackMetricsRef.current.deliverySource = delivery
+            }
           }
         })
         
@@ -521,3 +843,4 @@ export default function VideoPlayer({ src, title, subtitles = [], className }: V
     </div>
   )
 }
+
