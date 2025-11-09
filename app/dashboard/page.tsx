@@ -62,13 +62,7 @@ export default function DashboardPage() {
             views: 0, // Backend doesn't track views yet
             uploadDate: new Date(video.created_at).toLocaleDateString(),
             category: "Video", // Default category
-            src: video.hls_stream_url
-              ? (video.hls_stream_url.startsWith("http")
-                  ? video.hls_stream_url
-                  : apiService.getHlsStreamUrl(video.id))
-              : video.hls_playlist_path
-                ? apiService.getHlsStreamUrl(video.id)
-                : "",
+            src: video.hls_stream_url || "",
             isNew: new Date(video.created_at) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // New if created within last 7 days
           }))
           

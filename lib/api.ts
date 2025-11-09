@@ -252,11 +252,6 @@ class ApiService {
     });
   }
 
-  // Helper method to get full URL for HLS streaming
-  getHlsStreamUrl(videoId: string): string {
-    return `${this.baseURL}/videos/${videoId}/stream/playlist.m3u8`;
-  }
-
   // Helper method to get thumbnail URL
   getThumbnailUrl(videoId: string): string {
     return `${this.baseURL}/videos/${videoId}/thumbnail`;

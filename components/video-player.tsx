@@ -44,8 +44,10 @@ export default function VideoPlayer({ src, title, subtitles = [], className }: V
   const [quality, setQuality] = useState("auto")
   const [selectedSubtitle, setSelectedSubtitle] = useState("off")
   const [isLoading, setIsLoading] = useState(true)
+  const [isBuffering, setIsBuffering] = useState(false)
   const [error, setError] = useState("")
   const [availableQualities, setAvailableQualities] = useState<string[]>([])
+  const [bufferedPercentage, setBufferedPercentage] = useState(0)
 
   // Auto-hide controls
   useEffect(() => {
@@ -61,28 +63,70 @@ export default function VideoPlayer({ src, title, subtitles = [], className }: V
     const video = videoRef.current
     if (!video) return
 
+    const updateBufferedState = () => {
+      if (!video) return
+      const { buffered, duration: mediaDuration } = video
+      if (!buffered || buffered.length === 0 || !isFinite(mediaDuration) || mediaDuration <= 0) {
+        setBufferedPercentage(0)
+        return
+      }
+
+      const bufferedEnd = buffered.end(buffered.length - 1)
+      const clampedEnd = Math.min(Math.max(bufferedEnd, 0), mediaDuration)
+      const percent = (clampedEnd / mediaDuration) * 100
+      setBufferedPercentage(percent)
+    }
+
     const handleLoadedMetadata = () => {
       setDuration(video.duration)
       setIsLoading(false)
+      updateBufferedState()
     }
 
     const handleTimeUpdate = () => {
       setCurrentTime(video.currentTime)
+      updateBufferedState()
     }
 
-    const handlePlay = () => setIsPlaying(true)
+    const handlePlay = () => {
+      setIsPlaying(true)
+      setIsBuffering(false)
+    }
     const handlePause = () => setIsPlaying(false)
+    const handleWaiting = () => {
+      if (!video.paused && video.readyState < 3) {
+        setIsBuffering(true)
+      }
+    }
+    const handleStalled = () => {
+      if (!video.paused) {
+        setIsBuffering(true)
+      }
+    }
+    const handlePlaying = () => setIsBuffering(false)
+    const handleCanPlay = () => setIsBuffering(false)
+    const handleProgress = () => updateBufferedState()
 
     video.addEventListener("loadedmetadata", handleLoadedMetadata)
     video.addEventListener("timeupdate", handleTimeUpdate)
     video.addEventListener("play", handlePlay)
     video.addEventListener("pause", handlePause)
+    video.addEventListener("progress", handleProgress)
+    video.addEventListener("waiting", handleWaiting)
+    video.addEventListener("stalled", handleStalled)
+    video.addEventListener("playing", handlePlaying)
+    video.addEventListener("canplay", handleCanPlay)
 
     return () => {
       video.removeEventListener("loadedmetadata", handleLoadedMetadata)
       video.removeEventListener("timeupdate", handleTimeUpdate)
       video.removeEventListener("play", handlePlay)
       video.removeEventListener("pause", handlePause)
+      video.removeEventListener("progress", handleProgress)
+      video.removeEventListener("waiting", handleWaiting)
+      video.removeEventListener("stalled", handleStalled)
+      video.removeEventListener("playing", handlePlaying)
+      video.removeEventListener("canplay", handleCanPlay)
     }
   }, [])
 
@@ -91,6 +135,8 @@ export default function VideoPlayer({ src, title, subtitles = [], className }: V
     const video = videoRef.current
     if (!video || !src) return
 
+    setBufferedPercentage(0)
+
     // Clean up previous HLS instance
     if (hlsRef.current) {
       hlsRef.current.destroy()
@@ -98,6 +144,7 @@ export default function VideoPlayer({ src, title, subtitles = [], className }: V
     }
 
     setIsLoading(true)
+    setIsBuffering(false)
     setError("")
 
     if (src.includes(".m3u8")) {
@@ -234,23 +281,68 @@ export default function VideoPlayer({ src, title, subtitles = [], className }: V
 
   const handleQualityChange = (newQuality: string) => {
     const hls = hlsRef.current
+    const video = videoRef.current
     if (!hls) return
 
     setQuality(newQuality)
 
     if (newQuality === "auto") {
       hls.currentLevel = -1 // Auto quality
+      hls.loadLevel = -1
+      return
+    }
+
+    const levels = hls.levels
+    const targetHeight = parseInt(newQuality.replace("p", ""))
+    const levelIndex = levels.findIndex((level) => level.height === targetHeight)
+
+    if (levelIndex === -1) return
+
+    const currentManualIndex =
+      hls.currentLevel >= 0
+        ? hls.currentLevel
+        : hls.loadLevel >= 0
+        ? hls.loadLevel
+        : hls.nextLevel >= 0
+        ? hls.nextLevel
+        : -1
+
+    const currentHeight =
+      currentManualIndex >= 0 && levels[currentManualIndex] ? levels[currentManualIndex].height ?? 0 : 0
+
+    const isUpgrade = currentHeight > 0 && targetHeight > currentHeight
+
+    if (isUpgrade) {
+      const resumePlayback = video ? !video.paused : false
+      const currentPlaybackTime = video?.currentTime ?? null
+
+      hls.currentLevel = levelIndex
+      hls.nextLevel = levelIndex
+      hls.loadLevel = levelIndex
+
+      if (currentPlaybackTime !== null) {
+        const handleBufferAppended = () => {
+          hls.off(Hls.Events.BUFFER_APPENDED, handleBufferAppended)
+          if (!video) return
+          video.currentTime = currentPlaybackTime
+          if (resumePlayback) {
+            void video.play().catch(() => {})
+          }
+        }
+        hls.on(Hls.Events.BUFFER_APPENDED, handleBufferAppended)
+      }
     } else {
-      // Find the level index for the selected quality
-      const levels = hls.levels
-      const targetHeight = parseInt(newQuality.replace("p", ""))
-      const levelIndex = levels.findIndex(level => level.height === targetHeight)
-      
-      if (levelIndex !== -1) {
+      // Schedule quality change on the next fragment to avoid visible stalls when stepping down
+      hls.nextLevel = levelIndex
+      hls.loadLevel = levelIndex
+
+      // If the video is paused, switch immediately so the next play uses the desired level
+      if (video?.paused) {
         hls.currentLevel = levelIndex
-        console.log(`Switched to ${newQuality} (level ${levelIndex})`)
       }
     }
+
+    console.log(`Switched to ${newQuality} (level ${levelIndex})`)
   }
 
   const formatTime = (time: number) => {
@@ -260,6 +352,8 @@ export default function VideoPlayer({ src, title, subtitles = [], className }: V
   }
 
   const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0
+  const clampedProgress = Math.max(0, Math.min(progressPercentage, 100))
+  const clampedBuffered = Math.max(0, Math.min(bufferedPercentage, 100))
 
   return (
     <div
@@ -288,7 +382,7 @@ export default function VideoPlayer({ src, title, subtitles = [], className }: V
       </video>
 
       {/* Loading indicator */}
-      {isLoading && (
+      {(isLoading || isBuffering) && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/50">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
         </div>
@@ -325,8 +419,21 @@ export default function VideoPlayer({ src, title, subtitles = [], className }: V
         )}
       >
         {/* Progress bar */}
-        <div className="mb-4">
-          <Slider value={[progressPercentage]} onValueChange={handleSeek} max={100} step={0.1} className="w-full" />
+        <div className="relative mb-4 h-6">
+          <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-white/15" />
+          <div
+            className="pointer-events-none absolute left-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-white/35"
+            style={{ width: `${clampedBuffered}%` }}
+          />
+          <Slider
+            value={[clampedProgress]}
+            onValueChange={handleSeek}
+            max={100}
+            step={0.1}
+            className="relative z-10 h-6"
+            trackClassName="bg-transparent"
+            rangeClassName="bg-primary"
+          />
         </div>
 
         {/* Control buttons */}
