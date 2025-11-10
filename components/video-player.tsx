@@ -261,11 +261,11 @@ export default function VideoPlayer({ src, title, subtitles = [], className, vid
 
       state.metricsSent = true
 
-      console.log("sendBeacon", preferBeacon)
+      console.log("sendBeacon, payload", preferBeacon, payload)
       if (preferBeacon && typeof navigator !== "undefined" && typeof (navigator as any).sendBeacon === "function") {
         console.log("sendBeacon inside")
         const blob = new Blob([JSON.stringify(payload)], { type: "application/json" })
-        ;(navigator as any).sendBeacon(`${API_BASE_URL}/metrics/playback`, blob)
+          ; (navigator as any).sendBeacon(`${API_BASE_URL}/metrics/playback`, blob)
         return
       }
 
@@ -447,7 +447,7 @@ export default function VideoPlayer({ src, title, subtitles = [], className, vid
           enableWorker: true,
           lowLatencyMode: true,
         })
-        
+
         hlsRef.current = hls
 
         hls.on(Hls.Events.MANIFEST_LOADING, () => {
@@ -462,15 +462,15 @@ export default function VideoPlayer({ src, title, subtitles = [], className, vid
           }
           captureResourceTiming(src, playbackMetricsRef.current)
         })
-        
+
         hls.on(Hls.Events.MEDIA_ATTACHED, () => {
           console.log("HLS media attached")
         })
-        
+
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           console.log("HLS manifest parsed")
           setIsLoading(false)
-          
+
           // Get available quality levels
           const levels = hls.levels
           const qualities = levels.map((level, index) => ({
@@ -478,16 +478,16 @@ export default function VideoPlayer({ src, title, subtitles = [], className, vid
             index: index,
             label: `${level.height}p`
           }))
-          
+
           // Sort by height (highest first)
           qualities.sort((a, b) => b.height - a.height)
-          
+
           const qualityLabels = ["auto", ...qualities.map(q => q.label)]
           setAvailableQualities(qualityLabels)
-          
+
           console.log("Available qualities:", qualityLabels)
         })
-        
+
         hls.on(Hls.Events.LEVEL_SWITCHED, (event: any, data: any) => {
           console.log("Quality switched to level:", data.level)
           const currentLevel = hls.levels[data.level]
@@ -510,7 +510,7 @@ export default function VideoPlayer({ src, title, subtitles = [], className, vid
             }
           }
         })
-        
+
         hls.loadSource(src)
         hls.attachMedia(video)
       } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
@@ -624,10 +624,10 @@ export default function VideoPlayer({ src, title, subtitles = [], className, vid
       hls.currentLevel >= 0
         ? hls.currentLevel
         : hls.loadLevel >= 0
-        ? hls.loadLevel
-        : hls.nextLevel >= 0
-        ? hls.nextLevel
-        : -1
+          ? hls.loadLevel
+          : hls.nextLevel >= 0
+            ? hls.nextLevel
+            : -1
 
     const currentHeight =
       currentManualIndex >= 0 && levels[currentManualIndex] ? levels[currentManualIndex].height ?? 0 : 0
@@ -648,7 +648,7 @@ export default function VideoPlayer({ src, title, subtitles = [], className, vid
           if (!video) return
           video.currentTime = currentPlaybackTime
           if (resumePlayback) {
-            void video.play().catch(() => {})
+            void video.play().catch(() => { })
           }
         }
         hls.on(Hls.Events.BUFFER_APPENDED, handleBufferAppended)

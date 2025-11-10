@@ -1,13 +1,16 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Link from "next/link"
 import VideoPlayer from "@/components/video-player"
 import VideoSidebar from "@/components/video-sidebar"
 import VideoUpload from "@/components/video-upload"
 import { apiService, type Video, VideoStatus } from "@/lib/api"
 import { useAuth } from "@/components/auth-context"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { AlertCircle, Loader2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import { AlertCircle, Loader2, Menu } from "lucide-react"
 
 interface DashboardVideo extends Video {
   thumbnail: string
@@ -42,6 +45,7 @@ export default function DashboardPage() {
   const [selectedVideo, setSelectedVideo] = useState<DashboardVideo | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState("")
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const { user } = useAuth()
 
   useEffect(() => {
@@ -84,6 +88,22 @@ export default function DashboardPage() {
     fetchVideos()
   }, [user, selectedVideo])
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    const handleResize = () => {
+      if (window.innerWidth >= 768) {
+        setIsSidebarOpen(false)
+      }
+    }
+
+    handleResize()
+    window.addEventListener("resize", handleResize)
+    return () => window.removeEventListener("resize", handleResize)
+  }, [])
+
   const handleVideoSelect = (video: DashboardVideo) => {
     setSelectedVideo(video)
   }
@@ -114,7 +134,7 @@ export default function DashboardPage() {
 
   if (isLoading) {
     return (
-      <div className="flex h-screen bg-background items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
           <p className="text-muted-foreground">Loading videos...</p>
@@ -125,7 +145,7 @@ export default function DashboardPage() {
 
   if (error) {
     return (
-      <div className="flex h-screen bg-background items-center justify-center p-4">
+      <div className="flex min-h-screen items-center justify-center bg-background p-4">
         <Alert variant="destructive" className="max-w-md">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>{error}</AlertDescription>
@@ -134,111 +154,140 @@ export default function DashboardPage() {
     )
   }
 
-  if (videos.length === 0) {
-    return (
-      <div className="flex h-screen bg-background">
-        <VideoSidebar videos={[]} selectedVideoId="" onVideoSelect={() => {}} />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <h2 className="text-2xl font-bold text-foreground mb-2">No videos yet</h2>
-            <p className="text-muted-foreground mb-4">Upload your first HLS video to get started</p>
-            <VideoUpload onUploadSuccess={handleUploadSuccess} className="max-w-md" />
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="flex h-screen bg-background">
-      {/* Sidebar */}
-      <VideoSidebar 
-        videos={sidebarVideos} 
-        selectedVideoId={selectedVideo?.id || ""} 
-        onVideoSelect={handleSidebarVideoSelect} 
-      />
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col">
-        {selectedVideo ? (
-          <>
-            {/* Video Player */}
-            <div className="flex-1 p-6">
-              {selectedVideo.status === VideoStatus.Ready && selectedVideo.src ? (
-                <VideoPlayer
-                  src={selectedVideo.src}
-                  title={selectedVideo.title}
-                  subtitles={selectedVideo.subtitles}
-                  className="w-full h-full max-h-[70vh]"
-                  videoId={selectedVideo.id}
-                />
-              ) : (
-                <div className="w-full h-full max-h-[70vh] flex items-center justify-center bg-black rounded-lg">
-                  <div className="text-center text-white space-y-2">
-                    {selectedVideo.status === VideoStatus.Processing ? (
-                      <>
-                        <p className="text-base">The video is being processed...</p>
-                        <p className="text-sm text-white/70">Try again in a few minutes.</p>
-                      </>
-                    ) : selectedVideo.status === VideoStatus.Uploading ? (
-                      <>
-                        <Loader2 className="h-12 w-12 animate-spin mx-auto" />
-                        <p className="text-base">Uploading video...</p>
-                        <p className="text-sm text-white/70">Hang tight while we finish uploading your file.</p>
-                      </>
-                    ) : selectedVideo.status === VideoStatus.Failed ? (
-                      <>
-                        <AlertCircle className="h-12 w-12 text-red-400 mx-auto" />
-                        <p className="text-base font-semibold">Processing failed</p>
-                        <p className="text-sm text-white/70">Try re-uploading the video from the dashboard.</p>
-                      </>
-                    ) : (
-                      <>
-                        <AlertCircle className="h-12 w-12 text-amber-300 mx-auto" />
-                        <p className="text-base font-semibold">Video not ready</p>
-                        <p className="text-sm text-white/70">We&apos;ll enable playback once the stream is prepared.</p>
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Video Info */}
-              <div className="mt-6 space-y-4">
-                <div>
-                  <h1 className="text-2xl font-bold text-foreground text-balance">{selectedVideo.title}</h1>
-                  <div className="flex items-center space-x-4 mt-2 text-muted-foreground">
-                    <span>{selectedVideo.views} views</span>
-                    <span>•</span>
-                    <span>{selectedVideo.uploadDate}</span>
-                    <span>•</span>
-                    <span className="bg-secondary/10 text-secondary px-2 py-1 rounded text-sm">
-                      {selectedVideo.category}
-                    </span>
-                    <span className="bg-secondary/10 text-secondary px-2 py-1 rounded text-sm">
-                      {selectedVideo.status}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="bg-card p-4 rounded-lg border border-border">
-                  <h3 className="font-semibold text-card-foreground mb-2">About this video</h3>
-                  <p className="text-muted-foreground text-sm leading-relaxed">
-                    {selectedVideo.description || "No description available."}
-                  </p>
-                </div>
+    <Sheet open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
+      <div className="flex min-h-screen flex-col bg-background">
+        <header className="border-b border-border bg-background md:hidden">
+          <div className="flex items-center justify-between px-4 py-3">
+            <div className="flex items-center gap-3">
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" className="-ml-1">
+                  <Menu className="h-5 w-5" />
+                  <span className="sr-only">Open video library</span>
+                </Button>
+              </SheetTrigger>
+              <div>
+                <p className="text-lg font-semibold text-foreground">StreamApp</p>
+                <p className="text-xs text-muted-foreground">Your video dashboard</p>
               </div>
             </div>
-          </>
-        ) : (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center">
-              <h2 className="text-2xl font-bold text-foreground mb-2">Select a video</h2>
-              <p className="text-muted-foreground">Choose a video from the sidebar to start watching</p>
-            </div>
+            <Button asChild size="sm" variant="outline">
+              <Link href="/upload">Upload</Link>
+            </Button>
           </div>
-        )}
+        </header>
+
+        <div className="flex flex-1 flex-col md:flex-row">
+          <aside className="hidden md:flex md:h-screen md:w-80 md:flex-shrink-0 md:flex-col md:overflow-y-auto">
+            <VideoSidebar
+              videos={sidebarVideos}
+              selectedVideoId={selectedVideo?.id || ""}
+              onVideoSelect={handleSidebarVideoSelect}
+            />
+          </aside>
+
+          <main className="flex flex-1 flex-col md:overflow-hidden">
+            {videos.length === 0 ? (
+              <div className="flex flex-1 flex-col items-center justify-center gap-6 px-4 py-10 sm:px-6">
+                <div className="space-y-2 text-center">
+                  <h2 className="text-2xl font-bold text-foreground">No videos yet</h2>
+                  <p className="text-muted-foreground">
+                    Upload your first HLS video to start building your library.
+                  </p>
+                </div>
+                <VideoUpload onUploadSuccess={handleUploadSuccess} className="w-full max-w-md" />
+              </div>
+            ) : selectedVideo ? (
+              <div className="flex flex-1 flex-col overflow-y-auto">
+                <div className="flex-1 px-4 py-4 sm:px-6 sm:py-6">
+                  {selectedVideo.status === VideoStatus.Ready && selectedVideo.src ? (
+                    <VideoPlayer
+                      src={selectedVideo.src}
+                      title={selectedVideo.title}
+                      subtitles={selectedVideo.subtitles}
+                      className="w-full aspect-video md:aspect-auto md:h-full md:max-h-[70vh]"
+                      videoId={selectedVideo.id}
+                    />
+                  ) : (
+                    <div className="flex aspect-video w-full items-center justify-center rounded-lg bg-black text-white md:h-full md:max-h-[70vh]">
+                      <div className="space-y-2 text-center">
+                        {selectedVideo.status === VideoStatus.Processing ? (
+                          <>
+                            <p className="text-base">The video is being processed...</p>
+                            <p className="text-sm text-white/70">Try again in a few minutes.</p>
+                          </>
+                        ) : selectedVideo.status === VideoStatus.Uploading ? (
+                          <>
+                            <Loader2 className="mx-auto h-12 w-12 animate-spin" />
+                            <p className="text-base">Uploading video...</p>
+                            <p className="text-sm text-white/70">Hang tight while we finish uploading your file.</p>
+                          </>
+                        ) : selectedVideo.status === VideoStatus.Failed ? (
+                          <>
+                            <AlertCircle className="mx-auto h-12 w-12 text-red-400" />
+                            <p className="text-base font-semibold">Processing failed</p>
+                            <p className="text-sm text-white/70">Try re-uploading the video from the dashboard.</p>
+                          </>
+                        ) : (
+                          <>
+                            <AlertCircle className="mx-auto h-12 w-12 text-amber-300" />
+                            <p className="text-base font-semibold">Video not ready</p>
+                            <p className="text-sm text-white/70">We&apos;ll enable playback once the stream is prepared.</p>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-6 space-y-4 sm:mt-8">
+                    <div>
+                      <h1 className="text-xl font-bold text-foreground text-balance sm:text-2xl">
+                        {selectedVideo.title}
+                      </h1>
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                        <span>{selectedVideo.views} views</span>
+                        <span className="hidden sm:inline">•</span>
+                        <span>{selectedVideo.uploadDate}</span>
+                        <span className="hidden sm:inline">•</span>
+                        <span className="rounded bg-secondary/10 px-2 py-1 text-secondary">
+                          {selectedVideo.category}
+                        </span>
+                        <span className="rounded bg-secondary/10 px-2 py-1 text-secondary">
+                          {selectedVideo.status}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-border bg-card p-4">
+                      <h3 className="mb-2 font-semibold text-card-foreground">About this video</h3>
+                      <p className="text-sm leading-relaxed text-muted-foreground">
+                        {selectedVideo.description || "No description available."}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-1 items-center justify-center px-4 py-10">
+                <div className="text-center">
+                  <h2 className="text-2xl font-bold text-foreground">Select a video</h2>
+                  <p className="text-muted-foreground">Choose a video from the sidebar to start watching.</p>
+                </div>
+              </div>
+            )}
+          </main>
+        </div>
       </div>
-    </div>
+
+      <SheetContent side="left" className="w-full max-w-sm border-r border-border p-0">
+        <VideoSidebar
+          videos={sidebarVideos}
+          selectedVideoId={selectedVideo?.id || ""}
+          onVideoSelect={handleSidebarVideoSelect}
+          onClose={() => setIsSidebarOpen(false)}
+          className="h-full"
+        />
+      </SheetContent>
+    </Sheet>
   )
 }

@@ -40,6 +40,7 @@ interface VideoSidebarProps {
   selectedVideoId?: string
   onVideoSelect: (video: Video) => void
   className?: string
+  onClose?: () => void
 }
 
 const mockVideos: Video[] = [
@@ -97,6 +98,7 @@ export default function VideoSidebar({
   selectedVideoId,
   onVideoSelect,
   className,
+  onClose,
 }: VideoSidebarProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("All")
@@ -122,8 +124,18 @@ export default function VideoSidebar({
     }))
   }
 
+  const handleSidebarClose = () => {
+    onClose?.()
+  }
+
   return (
-    <div className={cn("w-80 bg-sidebar border-r border-sidebar-border flex flex-col h-full", className)}>
+    <div
+      className={cn(
+        "flex h-full w-full max-w-full flex-col bg-sidebar",
+        "md:w-80 md:border-r md:border-sidebar-border",
+        className,
+      )}
+    >
       {/* Header */}
       <div className="p-4 border-b border-sidebar-border">
         <div className="flex items-center space-x-3 mb-4">
@@ -145,11 +157,11 @@ export default function VideoSidebar({
         </div>
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 overflow-y-auto">
         <div className="p-4 space-y-6">
           {/* Quick Actions */}
           <div className="space-y-2">
-            <Link href="/upload">
+            <Link href="/upload" onClick={handleSidebarClose}>
               <Button
                 variant="ghost"
                 className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -161,6 +173,7 @@ export default function VideoSidebar({
             <Button
               variant="ghost"
               className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              onClick={handleSidebarClose}
             >
               <TrendingUp className="h-4 w-4 mr-3" />
               Trending
@@ -168,6 +181,7 @@ export default function VideoSidebar({
             <Button
               variant="ghost"
               className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              onClick={handleSidebarClose}
             >
               <History className="h-4 w-4 mr-3" />
               Watch History
@@ -175,12 +189,13 @@ export default function VideoSidebar({
             <Button
               variant="ghost"
               className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              onClick={handleSidebarClose}
             >
               <Bookmark className="h-4 w-4 mr-3" />
               Saved Videos
             </Button>
             {isAdmin && (
-              <Link href="/admin">
+              <Link href="/admin" onClick={handleSidebarClose}>
                 <Button
                   variant="ghost"
                   className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -234,7 +249,10 @@ export default function VideoSidebar({
                 {filteredVideos.map((video) => (
                   <div
                     key={video.id}
-                    onClick={() => onVideoSelect(video)}
+                    onClick={() => {
+                      onVideoSelect(video)
+                      handleSidebarClose()
+                    }}
                     className={cn(
                       "flex space-x-3 p-2 rounded-lg cursor-pointer transition-colors",
                       selectedVideoId === video.id
@@ -284,41 +302,44 @@ export default function VideoSidebar({
             )}
           </div>
         </div>
-      </ScrollArea>
+        {/* User Profile */}
+        <div className="border-t border-sidebar-border p-4">
+          <div className="mb-3 flex items-center space-x-3">
+            <Avatar className="h-8 w-8">
+              <AvatarImage src={user?.avatar || "/diverse-user-avatars.png"} />
+              <AvatarFallback>{user?.name?.charAt(0) || "U"}</AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-sidebar-foreground">{user?.name || "User"}</p>
+              <p className="text-xs text-muted-foreground">{isAdmin ? "Admin User" : "Premium Member"}</p>
+            </div>
+          </div>
 
-      {/* User Profile */}
-      <div className="p-4 border-t border-sidebar-border">
-        <div className="flex items-center space-x-3 mb-3">
-          <Avatar className="h-8 w-8">
-            <AvatarImage src={user?.avatar || "/diverse-user-avatars.png"} />
-            <AvatarFallback>{user?.name?.charAt(0) || "U"}</AvatarFallback>
-          </Avatar>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-sidebar-foreground">{user?.name || "User"}</p>
-            <p className="text-xs text-muted-foreground">{isAdmin ? "Admin User" : "Premium Member"}</p>
+          <div className="flex space-x-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="flex-1 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              onClick={handleSidebarClose}
+            >
+              <Settings className="h-4 w-4 mr-2" />
+              Settings
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                void logout()
+                handleSidebarClose()
+              }}
+              className="flex-1 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              Logout
+            </Button>
           </div>
         </div>
-
-        <div className="flex space-x-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="flex-1 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-          >
-            <Settings className="h-4 w-4 mr-2" />
-            Settings
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={logout}
-            className="flex-1 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-          >
-            <LogOut className="h-4 w-4 mr-2" />
-            Logout
-          </Button>
-        </div>
-      </div>
+      </ScrollArea>
     </div>
   )
 }
