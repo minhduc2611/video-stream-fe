@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
+import Link from "next/link"
 import { useAuth } from "@/components/auth-context"
 import { apiService, type PaginatedResponse, type Video as ApiVideo, VideoStatus } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -226,11 +227,16 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="mx-auto max-w-7xl space-y-8">
-        <div>
-          <h1 className="mb-2 text-3xl font-bold text-foreground">Video Admin Dashboard</h1>
-          <p className="text-muted-foreground">
-            Review your uploaded videos, update their metadata, and remove outdated content.
-          </p>
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="mb-2 text-3xl font-bold text-foreground">Video Admin Dashboard</h1>
+            <p className="text-muted-foreground">
+              Review your uploaded videos, update their metadata, and remove outdated content.
+            </p>
+          </div>
+          <Button asChild variant="outline" className="w-full md:w-auto">
+            <Link href="/insights">Go to Insights</Link>
+          </Button>
         </div>
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-4">
