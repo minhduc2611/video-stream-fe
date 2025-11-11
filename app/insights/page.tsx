@@ -17,6 +17,7 @@ import {
 } from "recharts"
 
 import { apiService, type MetricsInsights } from "@/lib/api"
+import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
   ChartContainer,
@@ -27,6 +28,7 @@ import {
 } from "@/components/ui/chart"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Loader2 } from "lucide-react"
+import Link from "next/link"
 
 type ChartEmptyStateProps = {
   message: string
@@ -254,11 +256,18 @@ export default function InsightsPage() {
   return (
     <div className="min-h-screen bg-background px-6 py-10">
       <div className="mx-auto max-w-7xl space-y-8">
-        <header className="space-y-2">
-          <h1 className="text-3xl font-bold text-foreground">Insights</h1>
-          <p className="text-muted-foreground">
-            Track processing benchmarks, API performance, playback quality, and runtime health in one view.
-          </p>
+        <header className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-2">
+              <h1 className="text-3xl font-bold text-foreground">Insights</h1>
+              <p className="text-muted-foreground">
+                Track processing benchmarks, API performance, playback quality, and runtime health in one view.
+              </p>
+            </div>
+            <Button variant="outline" asChild>
+              <Link href="/dashboard">Back to Dashboard</Link>
+            </Button>
+          </div>
         </header>
 
         <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
