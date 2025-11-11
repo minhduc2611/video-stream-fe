@@ -174,7 +174,7 @@ export default function InsightsPage() {
     }
 
     return insights.api_latency.by_route.slice(0, 6).map((route) => ({
-      route: `${route.method} ${route.route}`,
+      route: `/${route.route.replaceAll("/api/v1/", "")}`,
       avgLatency: route.avg_latency_ms ?? 0,
       p95Latency: route.p95_latency_ms ?? 0,
     }))
@@ -355,6 +355,8 @@ export default function InsightsPage() {
                       tick={{ fontSize: 12 }}
                       height={64}
                       interval={0}
+                      angle={-25}
+                      textAnchor="end"
                     />
                     <YAxis tickLine={false} axisLine={false} />
                     <ChartTooltip content={<ChartTooltipContent />} />
