@@ -265,6 +265,45 @@ export default function DashboardPage() {
                       </p>
                     </div>
                   </div>
+                  {videos.length > 1 && (
+                    <div className="mt-8 md:hidden">
+                      <h2 className="text-lg font-semibold text-foreground">Recommended Videos</h2>
+                      <div className="mt-4 space-y-4">
+                        {sidebarVideos
+                          .filter((video) => video.id !== selectedVideo.id)
+                          .map((video) => (
+                            <button
+                              key={video.id}
+                              onClick={() => handleSidebarVideoSelect(video)}
+                              className="flex w-full items-center gap-3 rounded-lg border border-border bg-card p-3 text-left transition-colors hover:bg-card/90"
+                              type="button"
+                            >
+                              <div className="relative h-20 w-32 flex-shrink-0 overflow-hidden rounded-md">
+                                <img
+                                  src={video.thumbnail || "/placeholder.svg"}
+                                  alt={video.title}
+                                  className="h-full w-full object-cover"
+                                />
+                                <span className="absolute bottom-1 right-1 rounded bg-black/80 px-1 text-xs text-white">
+                                  {video.duration}
+                                </span>
+                              </div>
+                              <div className="flex-1 space-y-1">
+                                <p className="text-sm font-medium text-foreground line-clamp-2 text-balance">
+                                  {video.title}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {video.views} views • {video.uploadDate}
+                                </p>
+                                <span className="inline-flex items-center rounded bg-secondary/10 px-2 py-0.5 text-xs text-secondary">
+                                  {video.category}
+                                </span>
+                              </div>
+                            </button>
+                          ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
