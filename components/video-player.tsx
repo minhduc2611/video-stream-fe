@@ -198,6 +198,8 @@ export default function VideoPlayer({ src, title, subtitles = [], className, vid
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showControls, setShowControls] = useState(true)
   const [quality, setQuality] = useState("auto")
+  const [autoQualityLabel, setAutoQualityLabel] = useState<string | null>(null)
+  const qualityRef = useRef(quality)
   const [selectedSubtitle, setSelectedSubtitle] = useState("off")
   const [isLoading, setIsLoading] = useState(true)
   const [isBuffering, setIsBuffering] = useState(false)
@@ -430,6 +432,8 @@ export default function VideoPlayer({ src, title, subtitles = [], className, vid
     if (!video || !src) return
 
     setBufferedPercentage(0)
+    setQuality("auto")
+    setAutoQualityLabel(null)
 
     // Clean up previous HLS instance
     if (hlsRef.current) {
@@ -446,6 +450,9 @@ export default function VideoPlayer({ src, title, subtitles = [], className, vid
         const hls = new Hls({
           enableWorker: true,
           lowLatencyMode: true,
+          startLevel: -1,
+          autoStartLoad: true,
+          capLevelToPlayerSize: true,
         })
 
         hlsRef.current = hls
@@ -484,6 +491,14 @@ export default function VideoPlayer({ src, title, subtitles = [], className, vid
 
           const qualityLabels = ["auto", ...qualities.map(q => q.label)]
           setAvailableQualities(qualityLabels)
+          hls.currentLevel = -1
+          hls.nextLevel = -1
+          hls.loadLevel = -1
+          hls.autoLevelCapping = -1
+          setQuality("auto")
+          setAutoQualityLabel(
+            qualities.length > 0 ? `${qualities[0].label}` : null,
+          )
 
           console.log("Available qualities:", qualityLabels)
         })
@@ -492,7 +507,11 @@ export default function VideoPlayer({ src, title, subtitles = [], className, vid
           console.log("Quality switched to level:", data.level)
           const currentLevel = hls.levels[data.level]
           if (currentLevel) {
+            const label = `${currentLevel.height}p`
             console.log(`Now playing at ${currentLevel.height}p`)
+            if (qualityRef.current === "auto") {
+              setAutoQualityLabel(label)
+            }
           }
         })
 
@@ -534,6 +553,10 @@ export default function VideoPlayer({ src, title, subtitles = [], className, vid
       }
     }
   }, [src])
+
+  useEffect(() => {
+    qualityRef.current = quality
+  }, [quality])
 
   const togglePlay = () => {
     const video = videoRef.current
@@ -611,6 +634,8 @@ export default function VideoPlayer({ src, title, subtitles = [], className, vid
     if (newQuality === "auto") {
       hls.currentLevel = -1 // Auto quality
       hls.loadLevel = -1
+      hls.nextLevel = -1
+      setAutoQualityLabel(null)
       return
     }
 
@@ -665,6 +690,7 @@ export default function VideoPlayer({ src, title, subtitles = [], className, vid
     }
 
     console.log(`Switched to ${newQuality} (level ${levelIndex})`)
+    setAutoQualityLabel(null)
   }
 
   const formatTime = (time: number) => {
@@ -807,6 +833,9 @@ export default function VideoPlayer({ src, title, subtitles = [], className, vid
             <Select value={quality} onValueChange={handleQualityChange}>
               <SelectTrigger className="w-auto bg-transparent border-none text-white">
                 <Settings className="h-4 w-4" />
+                {quality === "auto" && autoQualityLabel ? (
+                  <span className="ml-2 text-xs uppercase tracking-wide">{autoQualityLabel}</span>
+                ) : null}
               </SelectTrigger>
               <SelectContent className="z-[9999]" side="top">
                 {availableQualities.length > 0 ? (

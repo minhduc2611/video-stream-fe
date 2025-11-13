@@ -391,11 +391,6 @@ class ApiService {
   async getMetricsInsights(): Promise<ApiResponse<MetricsInsights>> {
     return this.request<MetricsInsights>('/metrics/insights');
   }
-
-  // Helper method to get thumbnail URL
-  getThumbnailUrl(videoId: string): string {
-    return `${this.baseURL}/videos/${videoId}/thumbnail`;
-  }
 }
 
 export const apiService = new ApiService(API_BASE_URL);

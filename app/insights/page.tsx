@@ -187,7 +187,7 @@ export default function InsightsPage() {
       return []
     }
 
-    return insights.playback.by_country.slice(0, 5).map((country) => ({
+    return insights.playback.by_country.map((country) => ({
       country: country.country,
       firstFrame: country.avg_first_frame_ms ?? 0,
       startup: country.avg_total_startup_ms ?? 0,
