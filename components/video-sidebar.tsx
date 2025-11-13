@@ -109,7 +109,7 @@ export default function VideoSidebar({
 
   const { user, logout, isAdmin } = useAuth()
 
-  const categories = ["All", "Tutorial", "Programming", "Web Dev", "CSS", "Backend"]
+  const categories = ["All"]
 
   const filteredVideos = videos.filter((video) => {
     const matchesSearch = video.title.toLowerCase().includes(searchQuery.toLowerCase())
@@ -160,7 +160,7 @@ export default function VideoSidebar({
       <ScrollArea className="flex-1 overflow-y-auto">
         <div className="p-4 space-y-6">
           {/* Quick Actions */}
-          <div className="space-y-2">
+          {/* <div className="space-y-2">
             <Link href="/upload" onClick={handleSidebarClose}>
               <Button
                 variant="ghost"
@@ -205,7 +205,7 @@ export default function VideoSidebar({
                 </Button>
               </Link>
             )}
-          </div>
+          </div> */}
 
           {/* Categories */}
           <div>
